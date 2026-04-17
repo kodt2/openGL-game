@@ -3,18 +3,12 @@ using OpenTK.Windowing.Common;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.GraphicsLibraryFramework;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System;
+using System.Collections.Generic;
+using System.IO;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Advanced;
-using System.Data;
-using System.ComponentModel.DataAnnotations;
-using System.Runtime.ConstrainedExecution;
-using System.Collections.Generic;
-using System.IO;
 class Program
 {
     public static int shaderProgram;
@@ -37,8 +31,31 @@ class Program
 
         return shader; // Возвращаем идентификатор шейдера
     }
+    private static int CreateShaderProgram(string vertexShaderSource, string fragmentShaderSource)
+    {
+        int vertexShader = CompileShader(vertexShaderSource, ShaderType.VertexShader);
+        int fragmentShader = CompileShader(fragmentShaderSource, ShaderType.FragmentShader);
+
+        int shader = GL.CreateProgram();
+        GL.AttachShader(shader, vertexShader);
+        GL.AttachShader(shader, fragmentShader);
+        GL.LinkProgram(shader);
+
+        GL.GetProgram(shader, GetProgramParameterName.LinkStatus, out int linkStatus);
+        if (linkStatus == 0)
+        {
+            string log = GL.GetProgramInfoLog(shader);
+            throw new Exception($"Не удалось связать шейдерную программу: {log}");
+        }
+
+        GL.DeleteShader(vertexShader);
+        GL.DeleteShader(fragmentShader);
+
+        return shader;
+    }
+
     //шейдер для одноцветных текстур
-    public static int CompileSaders()
+    public static int CompileShaders()
     {
         string vertexShaderSource =
             @"#version 330 core
@@ -73,38 +90,12 @@ void main()
     FragColorOut = vec4(FragColor, alphaChannel);
 
 }";
-        // Компиляция шейдеров
-        int vertexShader = CompileShader(vertexShaderSource, ShaderType.VertexShader);
-        int fragmentShader = CompileShader(fragmentShaderSource, ShaderType.FragmentShader);
-
-        // Создание и связывание шейдерной программы
-        int shader = GL.CreateProgram();
-        GL.AttachShader(shader, vertexShader);
-        GL.AttachShader(shader, fragmentShader);
-        GL.LinkProgram(shader);
-
-        Console.WriteLine($"Shader: {shader}");
-
-        // Проверка на ошибки линковки
-        GL.GetProgram(shader, GetProgramParameterName.LinkStatus, out int linkStatus);
-        if (linkStatus == 0)
-        {
-            string log = GL.GetProgramInfoLog(shader);
-            Console.WriteLine($"Ошибка линковки программы: {log}");
-            throw new Exception("Не удалось связать шейдерную программу.");
-        }
-
-        // Удаляем шейдеры после линковки
-        GL.DeleteShader(vertexShader);
-        GL.DeleteShader(fragmentShader);
-
-        // Сохраняем ID программы для использования в рендеринге
-        shaderProgram = shader;
+        shaderProgram = CreateShaderProgram(vertexShaderSource, fragmentShaderSource);
         return shaderProgram;
 
     }
     //шейдер для текстур
-    public static int CompileSaders1()
+    public static int CompileTextureShaders()
     {
         string vertexShaderSource =
             @"#version 330 core
@@ -147,33 +138,7 @@ void main()
                 FragColorOut = texture(texture1, TexCoord);
             }
             ";
-        // Компиляция шейдеров
-        int vertexShader = CompileShader(vertexShaderSource, ShaderType.VertexShader);
-        int fragmentShader = CompileShader(fragmentShaderSource, ShaderType.FragmentShader);
-
-        // Создание и связывание шейдерной программы
-        int shader = GL.CreateProgram();
-        GL.AttachShader(shader, vertexShader);
-        GL.AttachShader(shader, fragmentShader);
-        GL.LinkProgram(shader);
-
-        Console.WriteLine($"Shader: {shader}");
-
-        // Проверка на ошибки линковки
-        GL.GetProgram(shader, GetProgramParameterName.LinkStatus, out int linkStatus);
-        if (linkStatus == 0)
-        {
-            string log = GL.GetProgramInfoLog(shader);
-            Console.WriteLine($"Ошибка линковки программы: {log}");
-            throw new Exception("Не удалось связать шейдерную программу.");
-        }
-
-        // Удаляем шейдеры после линковки
-        GL.DeleteShader(vertexShader);
-        GL.DeleteShader(fragmentShader);
-
-        // Сохраняем ID программы для использования в рендеринге
-        shaderProgram1 = shader;
+        shaderProgram1 = CreateShaderProgram(vertexShaderSource, fragmentShaderSource);
         return shaderProgram1;
 
     }
@@ -211,6 +176,23 @@ void main()
         }
 
         return textureID;
+    }
+
+    private static string ResolveTexturePath(string fileName)
+    {
+        string localPath = Path.Combine(AppContext.BaseDirectory, fileName);
+        if (File.Exists(localPath))
+        {
+            return localPath;
+        }
+
+        string repoPath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
+        if (File.Exists(repoPath))
+        {
+            return repoPath;
+        }
+
+        throw new FileNotFoundException($"Texture file not found: {fileName}");
     }
 
 
@@ -342,8 +324,8 @@ void main()
             // === Настройка завершена ===
             window.Load += () =>
             {
-                CompileSaders();
-                shaderProgram1 = CompileSaders1();
+                CompileShaders();
+                shaderProgram1 = CompileTextureShaders();
 
                 //текстурная плоскость
 
@@ -375,7 +357,7 @@ void main()
                 GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
                 GL.BindVertexArray(0);
 
-                texID = LoadTexture(@"C:\\Users\\KODT\\Desktop\\Lab_work\\task1\\ConsoleApp1\\texture.jpg");
+                texID = LoadTexture(ResolveTexturePath("texture.jpg"));
 
                 if (texID == -1)
                 {
